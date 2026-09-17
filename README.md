@@ -19,7 +19,7 @@ formats into **Markdown**, powered by Microsoft's
 
 ## Requirements
 
-- Python 3.10 or newer
+- Python 3.11 or newer
 - `pip`
 
 ## Installation
@@ -41,11 +41,20 @@ pip install -r requirements.txt
 > exists, just activate it with `source .venv/bin/activate`.
 
 > The dependencies above cover the main document formats (PDF, Word,
-> PowerPoint, Excel, and Outlook). Other basic formats (CSV, HTML, XML, JSON,
-> TXT, EPUB, etc.) are supported without extra dependencies.
+> PowerPoint, Excel, and Outlook) plus audio transcription
+> (`audio-transcription`). Other basic formats (CSV, HTML, XML, JSON, TXT,
+> EPUB, etc.) are supported without extra dependencies.
 >
-> If you need advanced features, you can add more extras, for example:
-> - `audio-transcription` — audio transcription (wav/mp3, requires `ffmpeg`)
+> Audio files (`.wav`, `.mp3`, `.m4a`, `.mp4`) additionally require:
+> - [`ffmpeg`](https://ffmpeg.org/) available on your `PATH` (e.g. `brew install ffmpeg`)
+>
+> Audio is transcribed via Google's free speech service in 60-second chunks with
+> automatic retries. If that service is unreachable (e.g. a broken-pipe error),
+> the app automatically falls back to a local
+> [Whisper](https://github.com/openai/whisper) model (`faster-whisper`) that runs
+> fully offline.
+>
+> If you need more features, you can add other extras, for example:
 > - `youtube-transcription` — YouTube video transcription
 > - `az-doc-intel` / `az-content-understanding` — Azure services (requires credentials)
 > - or `markitdown[all]` to install everything at once
@@ -53,6 +62,15 @@ pip install -r requirements.txt
 ## Usage
 
 Make sure the dependencies are installed (see [Installation](#installation)).
+
+### Quick start
+
+```bash
+./run.sh
+```
+
+This creates the virtual environment (if needed), installs the dependencies,
+and launches the app.
 
 ### macOS / Linux
 
@@ -110,6 +128,7 @@ Type `q` at any time to exit.
 markitdown-converter/
 ├── main.py           # Main program (CLI)
 ├── i18n.py           # Translation strings (Indonesian/English)
+├── run.sh            # One-command setup and launch
 ├── requirements.txt  # Dependencies
 ├── README.md         # Documentation (English)
 ├── README.id.md      # Documentation (Indonesian)
@@ -122,6 +141,14 @@ markitdown-converter/
   package is already installed in the environment. Reload the Python language
   server (in Zed: `Cmd+Shift+P` → *language server: restart*, or *Reload
   Window*) so its index is refreshed.
+- **Audio fails with a connection error (broken pipe/timeout)** — the app
+  falls back to local Whisper automatically. If both engines fail, check your
+  internet connection, VPN/proxy, or firewall, and make sure `faster-whisper`
+  is installed.
+- **Audio produces an empty result or no transcript** — install the audio
+  dependencies (`pip install "markitdown[audio-transcription]"`) and make sure
+  `ffmpeg` is on your `PATH`. Files without clear speech (music, silence) cannot
+  be transcribed.
 - **A file fails to convert for a specific format** — make sure the relevant
   extras are installed (see the Installation section).
 

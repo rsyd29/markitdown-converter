@@ -12,8 +12,14 @@ Usage:
 
 from __future__ import annotations
 
+import importlib.util
+import io
+import shutil
 import sys
+import threading
+import time
 from pathlib import Path
+from typing import Any, Self
 
 from markitdown import MarkItDown
 
@@ -26,6 +32,207 @@ def clean_input(raw: str) -> str:
     if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
         raw = raw[1:-1].strip()
     return raw
+
+
+class Progress:
+    """Show an animated spinner and elapsed time while work is running.
+
+    When stdout is not a terminal, it prints the message once instead of
+    animating, but still records the elapsed time.
+    """
+
+    _FRAMES = ("|", "/", "-", "\\")
+
+    def __init__(self, message: str) -> None:
+        self._message = message
+        self._done = threading.Event()
+        self._thread: threading.Thread | None = None
+        self.elapsed = 0.0
+
+    def __enter__(self) -> Self:
+        self._start = time.monotonic()
+        if sys.stdout.isatty():
+            self._thread = threading.Thread(target=self._animate, daemon=True)
+            self._thread.start()
+        else:
+            print(self._message)
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.elapsed = time.monotonic() - self._start
+        if self._thread is not None:
+            self._done.set()
+            self._thread.join()
+            sys.stdout.write("\r" + " " * 80 + "\r")
+            sys.stdout.flush()
+
+    def _animate(self) -> None:
+        frame = 0
+        while not self._done.is_set():
+            elapsed = time.monotonic() - self._start
+            sys.stdout.write(
+                f"\r  {self._FRAMES[frame % len(self._FRAMES)]} "
+                f"{self._message} ({elapsed:.1f}s)"
+            )
+            sys.stdout.flush()
+            frame += 1
+            self._done.wait(0.1)
+
+
+#: Audio formats handled by markitdown's audio converter.
+AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".mp4"}
+
+#: Google's free speech service drops the connection on large single requests,
+#: so audio is transcribed in chunks, downmixed to 16 kHz mono to keep each
+#: upload small. Transient connection errors are retried a few times.
+AUDIO_CHUNK_MS = 60_000
+AUDIO_SAMPLE_RATE = 16_000
+AUDIO_CHANNELS = 1
+AUDIO_RETRIES = 3
+AUDIO_RETRY_DELAY_S = 1.5
+
+#: Local Whisper model used when Google's service is unreachable. Smaller
+#: models ("tiny", "base") run faster on CPU; larger ones are more accurate.
+WHISPER_MODEL = "base"
+
+
+def is_audio(path: Path) -> bool:
+    """Return True if the file is an audio format handled by markitdown."""
+    return path.suffix.lower() in AUDIO_EXTENSIONS
+
+
+def audio_dependencies_installed() -> bool:
+    """Return True if the packages needed for Google transcription are available."""
+    return (
+        importlib.util.find_spec("pydub") is not None
+        and importlib.util.find_spec("speech_recognition") is not None
+    )
+
+
+def whisper_available() -> bool:
+    """Return True if the local Whisper transcription backend is installed."""
+    return importlib.util.find_spec("faster_whisper") is not None
+
+
+def recognize_chunk(recognizer: Any, data: Any) -> str | None:
+    """Transcribe one chunk with Google, retrying transient connection errors.
+
+    Returns the chunk text (possibly empty for silence), or ``None`` when the
+    service is unreachable.
+    """
+    import speech_recognition as sr
+
+    for attempt in range(1, AUDIO_RETRIES + 1):
+        try:
+            return recognizer.recognize_google(data)
+        except sr.UnknownValueError:
+            # Silence or unintelligible speech in this chunk is not fatal.
+            return ""
+        except sr.RequestError:
+            if attempt < AUDIO_RETRIES:
+                time.sleep(AUDIO_RETRY_DELAY_S * attempt)
+    return None
+
+
+def transcribe_google(source: Path, t: dict[str, str]) -> str | None:
+    """Transcribe an audio file with Google, chunk by chunk.
+
+    Returns the transcript, or ``None`` if the service is unreachable.
+    """
+    import pydub
+    import speech_recognition as sr
+
+    segment = pydub.AudioSegment.from_file(str(source))
+    recognizer = sr.Recognizer()
+    parts: list[str] = []
+    total = (len(segment) + AUDIO_CHUNK_MS - 1) // AUDIO_CHUNK_MS
+
+    for index, start in enumerate(range(0, len(segment), AUDIO_CHUNK_MS), start=1):
+        print(t["progress_chunk"].format(current=index, total=total))
+        chunk = segment[start : start + AUDIO_CHUNK_MS]
+        chunk = chunk.set_frame_rate(AUDIO_SAMPLE_RATE).set_channels(AUDIO_CHANNELS)
+
+        buffer = io.BytesIO()
+        chunk.export(buffer, format="wav")
+        buffer.seek(0)
+
+        with sr.AudioFile(buffer) as audio_file:
+            data = recognizer.record(audio_file)
+
+        text = recognize_chunk(recognizer, data)
+        if text is None:
+            return None
+        if text:
+            parts.append(text)
+
+    return " ".join(parts)
+
+
+def transcribe_whisper(source: Path) -> str:
+    """Transcribe an audio file locally with faster-whisper (works offline)."""
+    from faster_whisper import WhisperModel
+
+    model = WhisperModel(WHISPER_MODEL, device="auto", compute_type="int8")
+    segments, _info = model.transcribe(str(source))
+    return " ".join(segment.text.strip() for segment in segments if segment.text.strip())
+
+
+def transcribe_audio(source: Path, t: dict[str, str]) -> tuple[str, str | None]:
+    """Transcribe an audio file, preferring Google and falling back to Whisper.
+
+    Returns ``(transcript, error)``. ``error`` is ``None`` on success, and
+    ``"network"`` or ``"no_speech"`` otherwise.
+    """
+    google_text = (
+        transcribe_google(source, t) if audio_dependencies_installed() else None
+    )
+
+    # Fall back to local Whisper when Google failed to connect or found no
+    # speech (Whisper is more robust at detecting speech).
+    if (google_text is None or not google_text.strip()) and whisper_available():
+        with Progress(t["progress_whisper"]):
+            try:
+                whisper_text = transcribe_whisper(source)
+            except Exception:  # noqa: BLE001 — best-effort fallback, any failure means no text
+                whisper_text = ""
+        if whisper_text.strip():
+            return whisper_text.strip(), None
+
+    if google_text is None:
+        return "", "network"
+    if not google_text.strip():
+        return "", "no_speech"
+    return google_text.strip(), None
+
+
+def convert_audio(source: Path, t: dict[str, str]) -> str | None:
+    """Convert an audio file into a Markdown transcript."""
+    if not audio_dependencies_installed() and not whisper_available():
+        print(t["audio_missing_deps"])
+        return None
+    if shutil.which("ffmpeg") is None:
+        print(t["audio_missing_ffmpeg"])
+        return None
+
+    print(t["converting"].format(name=source.name))
+    started = time.monotonic()
+    try:
+        transcript, error = transcribe_audio(source, t)
+    except Exception as exc:  # noqa: BLE001 — report decoding/other failures
+        print(t["convert_failed"].format(error=exc))
+        return None
+    elapsed = time.monotonic() - started
+
+    if error == "network":
+        print(t["audio_network_error"])
+        return None
+    if error == "no_speech":
+        print(t["audio_no_speech"])
+        return None
+
+    content = f"### Audio Transcript:\n{transcript}"
+    print(t["convert_success"].format(count=len(content), seconds=elapsed))
+    return content
 
 
 def choose_language() -> dict[str, str]:
@@ -106,9 +313,14 @@ def choose_output_path(source: Path, t: dict[str, str]) -> Path:
 
 def convert_file(source: Path, md: MarkItDown, t: dict[str, str]) -> str | None:
     """Convert the file; return the Markdown content or None on failure."""
-    print(t["converting"].format(name=source.name))
+    # Audio uses a dedicated chunked transcription path, see convert_audio().
+    if is_audio(source):
+        return convert_audio(source, t)
+
+    message = t["converting"].format(name=source.name)
     try:
-        result = md.convert(str(source))
+        with Progress(message) as progress:
+            result = md.convert(str(source))
     except Exception as exc:  # noqa: BLE001 — show all errors in a friendly way
         print(t["convert_failed"].format(error=exc))
         return None
@@ -118,7 +330,7 @@ def convert_file(source: Path, md: MarkItDown, t: dict[str, str]) -> str | None:
         print(t["empty_result"])
         return None
 
-    print(t["convert_success"].format(count=len(content)))
+    print(t["convert_success"].format(count=len(content), seconds=progress.elapsed))
     return content
 
 

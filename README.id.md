@@ -19,7 +19,7 @@ serta berbagai format lain menjadi **Markdown**, memanfaatkan pustaka
 
 ## Persyaratan
 
-- Python 3.10 atau lebih baru
+- Python 3.11 atau lebih baru
 - `pip`
 
 ## Instalasi
@@ -41,11 +41,20 @@ pip install -r requirements.txt
 > cukup aktifkan dengan `source .venv/bin/activate`.
 
 > Dependency di atas mencakup format dokumen utama (PDF, Word, PowerPoint,
-> Excel, dan Outlook). Format dasar lain (CSV, HTML, XML, JSON, TXT, EPUB,
-> dll.) sudah didukung tanpa dependency tambahan.
+> Excel, dan Outlook) serta transkripsi audio (`audio-transcription`). Format
+> dasar lain (CSV, HTML, XML, JSON, TXT, EPUB, dll.) sudah didukung tanpa
+> dependency tambahan.
 >
-> Jika perlu fitur lanjutan, kamu bisa menambahkan extras lain, contoh:
-> - `audio-transcription` — transkripsi audio (wav/mp3, butuh `ffmpeg`)
+> File audio (`.wav`, `.mp3`, `.m4a`, `.mp4`) juga memerlukan:
+> - [`ffmpeg`](https://ffmpeg.org/) tersedia di `PATH` (mis. `brew install ffmpeg`)
+>
+> Audio ditranskripsi lewat layanan suara Google per potongan 60 detik dengan
+> percobaan ulang otomatis. Jika layanan itu tidak terjangkau (mis. error
+> broken pipe), aplikasi otomatis beralih ke model
+> [Whisper](https://github.com/openai/whisper) lokal (`faster-whisper`) yang
+> berjalan sepenuhnya offline.
+>
+> Jika perlu fitur lain, kamu bisa menambahkan extras lain, contoh:
 > - `youtube-transcription` — transkripsi video YouTube
 > - `az-doc-intel` / `az-content-understanding` — layanan Azure (butuh kredensial)
 > - atau `markitdown[all]` untuk memasang semuanya sekaligus
@@ -53,6 +62,15 @@ pip install -r requirements.txt
 ## Cara Menjalankan
 
 Pastikan dependency sudah terpasang (lihat [Instalasi](#instalasi)).
+
+### Mulai cepat
+
+```bash
+./run.sh
+```
+
+Skrip ini membuat virtual environment (bila perlu), memasang dependency, lalu
+menjalankan aplikasi.
 
 ### macOS / Linux
 
@@ -110,6 +128,7 @@ Ketik `q` kapan saja untuk keluar.
 markitdown-converter/
 ├── main.py           # Program utama (CLI)
 ├── i18n.py           # Teks terjemahan (Indonesia/Inggris)
+├── run.sh            # Skrip setup & jalankan sekali perintah
 ├── requirements.txt  # Dependency
 ├── README.md         # Dokumentasi (Inggris)
 ├── README.id.md      # Dokumentasi (Indonesia)
@@ -122,6 +141,12 @@ markitdown-converter/
   `markitdown` sudah terpasang di environment. Muat ulang language server Python
   (di Zed: `Cmd+Shift+P` → *language server: restart*, atau *Reload Window*)
   agar index-nya diperbarui.
+- **Audio gagal dengan error koneksi (broken pipe/timeout)** — aplikasi
+  otomatis beralih ke Whisper lokal. Bila keduanya gagal, cek koneksi internet,
+  VPN/proxy, atau firewall, dan pastikan `faster-whisper` terpasang.
+- **Audio menghasilkan hasil kosong atau tanpa transkrip** — pasang dependency
+  audio (`pip install "markitdown[audio-transcription]"`) dan pastikan `ffmpeg`
+  ada di `PATH`. File tanpa suara jelas (musik, hening) tidak bisa ditranskripsi.
 - **File tidak terkonversi untuk format tertentu** — pastikan extras yang
   relevan terpasang (lihat bagian Instalasi).
 

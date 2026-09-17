@@ -1,1 +1,2 @@
-markitdown[pdf,docx,pptx,xlsx,xls,outlook]
+markitdown[pdf,docx,pptx,xlsx,xls,outlook,audio-transcription]
+faster-whisper
