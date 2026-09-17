@@ -96,10 +96,6 @@ AUDIO_RETRY_DELAY_S = 1.5
 #: are more accurate but slower. "small" is a good accuracy/speed balance.
 WHISPER_MODEL = "small"
 
-#: Segments with a higher "no speech" probability are treated as silence/music
-#: and skipped, which prevents Whisper from hallucinating text on non-speech.
-WHISPER_NO_SPEECH_THRESHOLD = 0.6
-
 
 def is_audio(path: Path) -> bool:
     """Return True if the file is an audio format handled by markitdown."""
@@ -117,6 +113,14 @@ def audio_dependencies_installed() -> bool:
 def whisper_available() -> bool:
     """Return True if the local Whisper transcription backend is installed."""
     return importlib.util.find_spec("faster_whisper") is not None
+
+
+def format_timestamp(seconds: float) -> str:
+    """Format a duration in seconds as HH:MM:SS."""
+    total = int(seconds)
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
 #: Maps the audio language menu choice to (Google tag, Whisper code). ``None``
@@ -174,12 +178,12 @@ def transcribe_google(source: Path, t: dict[str, str], language: str | None) -> 
 
     segment = pydub.AudioSegment.from_file(str(source))
     recognizer = sr.Recognizer()
-    parts: list[str] = []
+    lines: list[str] = []
     total = (len(segment) + AUDIO_CHUNK_MS - 1) // AUDIO_CHUNK_MS
 
-    for index, start in enumerate(range(0, len(segment), AUDIO_CHUNK_MS), start=1):
+    for index, start_ms in enumerate(range(0, len(segment), AUDIO_CHUNK_MS), start=1):
         print(t["progress_chunk"].format(current=index, total=total))
-        chunk = segment[start : start + AUDIO_CHUNK_MS]
+        chunk = segment[start_ms : start_ms + AUDIO_CHUNK_MS]
         chunk = chunk.set_frame_rate(AUDIO_SAMPLE_RATE).set_channels(AUDIO_CHANNELS)
 
         buffer = io.BytesIO()
@@ -193,9 +197,9 @@ def transcribe_google(source: Path, t: dict[str, str], language: str | None) -> 
         if text is None:
             return None
         if text:
-            parts.append(text)
+            lines.append(f"[{format_timestamp(start_ms / 1000)}] {text}")
 
-    return " ".join(parts)
+    return "\n".join(lines)
 
 
 def transcribe_whisper(source: Path, language: str | None) -> str:
@@ -209,11 +213,10 @@ def transcribe_whisper(source: Path, language: str | None) -> str:
         vad_filter=True,
         condition_on_previous_text=False,
     )
-    return " ".join(
-        segment.text.strip()
+    return "\n".join(
+        f"[{format_timestamp(segment.start)}] {segment.text.strip()}"
         for segment in segments
         if segment.text.strip()
-        and segment.no_speech_prob < WHISPER_NO_SPEECH_THRESHOLD
     )
 
 
