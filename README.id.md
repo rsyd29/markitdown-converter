@@ -11,6 +11,7 @@ serta berbagai format lain menjadi **Markdown**, memanfaatkan pustaka
 - Konversi banyak format: PDF, PPTX, DOCX, XLSX/XLS, CSV, HTML, XML, JSON,
   TXT, RTF, ODT, ODP, ODS, EPUB, Outlook (msg), gambar, audio, dan lainnya.
 - UI interaktif berbasis CLI — cukup masukkan path file.
+- Pilih bahasa antarmuka (Indonesia atau Inggris) saat aplikasi dijalankan.
 - Hasil Markdown bisa diberi nama kustom, atau otomatis memakai nama file
   sumber dengan ekstensi diganti menjadi `.md`.
 - Menangani file yang tidak ditemukan, konversi gagal, dan konfirmasi
@@ -90,15 +91,16 @@ Atau langsung tanpa mengaktifkan venv:
 
 Lalu ikuti langkahnya:
 
-1. Masukkan path file yang ingin diubah, contoh:
+1. Pilih bahasa antarmuka: `1` untuk Bahasa Indonesia, `2` untuk English.
+2. Masukkan path file yang ingin diubah, contoh:
    - `report.pdf`
    - `presentasi.pptx`
    - `/Users/nama/Documents/dokumen.docx`
-2. Program akan mengonversi file dan menampilkan jumlah karakter hasil.
-3. Pilih penamaan file hasil:
+3. Program akan mengonversi file dan menampilkan jumlah karakter hasil.
+4. Pilih penamaan file hasil:
    - `1` → nama sama dengan sumber (hanya ekstensi berubah jadi `.md`)
    - `2` → nama/path kustom (bila hanya nama, disimpan di folder sumber)
-4. File Markdown tersimpan. Program kembali meminta file berikutnya.
+5. File Markdown tersimpan. Program kembali meminta file berikutnya.
 
 Ketik `q` kapan saja untuk keluar.
 
@@ -107,6 +109,7 @@ Ketik `q` kapan saja untuk keluar.
 ```
 markitdown-converter/
 ├── main.py           # Program utama (CLI)
+├── i18n.py           # Teks terjemahan (Indonesia/Inggris)
 ├── requirements.txt  # Dependency
 ├── README.md         # Dokumentasi (Inggris)
 ├── README.id.md      # Dokumentasi (Indonesia)

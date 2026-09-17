@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """MarkItDown CLI Converter.
 
-Mengonversi berbagai jenis file (PDF, PPTX, DOCX, XLSX, CSV, HTML, dll.)
-menjadi Markdown menggunakan pustaka `markitdown` dari Microsoft.
+Convert various file types (PDF, PPTX, DOCX, XLSX, CSV, HTML, etc.)
+into Markdown using Microsoft's `markitdown` library.
 
-Cara pakai:
+The interface language (Indonesian or English) is chosen at startup.
+
+Usage:
     python main.py
 """
 
@@ -15,55 +17,62 @@ from pathlib import Path
 
 from markitdown import MarkItDown
 
-
-# Daftar ekstensi yang umum didukung markitdown. Dipakai hanya sebagai info,
-# bukan untuk memblokir file — konversi tetap dicoba apa pun ekstensinya.
-SUPPORTED_FORMATS = (
-    "PDF, PowerPoint (pptx), Word (docx), Excel (xlsx/xls), CSV, HTML, "
-    "XML, JSON, TXT, Markdown, RTF, ODT, ODP, ODS, EPUB, Outlook (msg), "
-    "gambar, audio (wav/mp3), dan lainnya"
-)
+from i18n import LANGUAGE_CHOICES, LANGUAGE_MENU, get_translations
 
 
 def clean_input(raw: str) -> str:
-    """Bersihkan input: buang spasi dan tanda kutip di sekitar path."""
+    """Clean input: strip whitespace and surrounding quotes from the path."""
     raw = raw.strip()
     if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
         raw = raw[1:-1].strip()
     return raw
 
 
-def print_banner() -> None:
+def choose_language() -> dict[str, str]:
+    """Ask the user to pick a language and return its string table."""
     print("=" * 60)
     print("        MarkItDown Converter — File to Markdown")
     print("=" * 60)
-    print(f"  Format yang didukung: {SUPPORTED_FORMATS}")
-    print("  Ketik 'q' kapan saja untuk keluar.")
+    print(LANGUAGE_MENU["title"])
+    print(LANGUAGE_MENU["option_id"])
+    print(LANGUAGE_MENU["option_en"])
+
+    while True:
+        choice = clean_input(input(LANGUAGE_MENU["prompt"]))
+        if choice in LANGUAGE_CHOICES:
+            return get_translations(LANGUAGE_CHOICES[choice])
+        print(LANGUAGE_MENU["invalid"])
+
+
+def print_banner(t: dict[str, str]) -> None:
+    print("-" * 60)
+    print(t["banner_supported"].format(formats=t["formats"]))
+    print(t["banner_quit"])
     print("-" * 60)
 
 
-def pick_source_file() -> Path:
-    """Minta path file sumber sampai pengguna memasukkan file yang valid."""
+def pick_source_file(t: dict[str, str]) -> Path:
+    """Prompt for the source file path until the user enters a valid file."""
     while True:
-        raw = clean_input(input("Path file yang ingin diubah: "))
+        raw = clean_input(input(t["prompt_file_path"]))
         if raw.lower() in {"q", "quit", "exit"}:
-            print("  Sampai jumpa!")
+            print(t["goodbye"])
             sys.exit(0)
         if not raw:
             continue
 
         path = Path(raw).expanduser()
         if not path.exists():
-            print(f"  [!] File tidak ditemukan: {path}")
+            print(t["file_not_found"].format(path=path))
             continue
         if not path.is_file():
-            print(f"  [!] Bukan sebuah file: {path}")
+            print(t["not_a_file"].format(path=path))
             continue
         return path.resolve()
 
 
 def ensure_md_extension(path: Path) -> Path:
-    """Pastikan path berakhiran .md (ganti/tambah ekstensi bila perlu)."""
+    """Ensure the path ends with .md (replace/add the extension if needed)."""
     if path.suffix.lower() == ".md":
         return path
     if path.suffix:
@@ -71,82 +80,86 @@ def ensure_md_extension(path: Path) -> Path:
     return Path(f"{path}.md")
 
 
-def choose_output_path(source: Path) -> Path:
-    """Tentukan lokasi penyimpanan file Markdown hasil konversi."""
-    print("\n  Pilih penamaan file hasil:")
-    print("    1) Sama seperti file asli (hanya ekstensi menjadi .md)")
-    print("    2) Nama / path kustom")
+def choose_output_path(source: Path, t: dict[str, str]) -> Path:
+    """Determine where to save the converted Markdown file."""
+    print(t["output_naming_title"])
+    print(t["output_option_same"])
+    print(t["output_option_custom"])
 
     while True:
-        choice = clean_input(input("  Pilihan (1/2): "))
+        choice = clean_input(input(t["prompt_choice"]))
         if choice == "1":
             return source.with_suffix(".md")
 
         if choice == "2":
-            raw = clean_input(input("  Nama file (boleh sertakan path lengkap): "))
+            raw = clean_input(input(t["prompt_custom_name"]))
             if not raw:
                 continue
             path = Path(raw).expanduser()
-            # Jika hanya nama tanpa folder, simpan di folder yang sama dgn sumber.
+            # If it's just a name without a directory, save it next to the source.
             if path.parent == Path("."):
                 path = source.parent / path.name
             return ensure_md_extension(path).resolve()
 
-        print("  [!] Pilihan tidak valid. Masukkan 1 atau 2.")
+        print(t["invalid_choice_1_2"])
 
 
-def convert_file(source: Path, md: MarkItDown) -> str | None:
-    """Konversi file, kembalikan isi Markdown atau None bila gagal."""
-    print(f"\n  Mengonversi '{source.name}' ...")
+def convert_file(source: Path, md: MarkItDown, t: dict[str, str]) -> str | None:
+    """Convert the file; return the Markdown content or None on failure."""
+    print(t["converting"].format(name=source.name))
     try:
         result = md.convert(str(source))
-    except Exception as exc:  # noqa: BLE001 — tampilkan semua error dgn ramah
-        print(f"  [x] Gagal mengonversi: {exc}")
+    except Exception as exc:  # noqa: BLE001 — show all errors in a friendly way
+        print(t["convert_failed"].format(error=exc))
         return None
 
     content = (getattr(result, "markdown", None) or result.text_content or "").strip()
     if not content:
-        print("  [x] Hasil konversi kosong.")
+        print(t["empty_result"])
         return None
 
-    print(f"  [✓] Konversi berhasil ({len(content)} karakter).")
+    print(t["convert_success"].format(count=len(content)))
     return content
 
 
-def save_file(destination: Path, content: str) -> None:
-    """Simpan isi Markdown ke tujuan, dengan konfirmasi bila sudah ada."""
+def save_file(destination: Path, content: str, t: dict[str, str]) -> None:
+    """Save the Markdown content to the destination, confirming if it exists."""
     if destination.exists():
-        answer = clean_input(
-            f"  File '{destination}' sudah ada. Timpa? (y/n): "
-        ).lower()
+        answer = clean_input(t["overwrite_prompt"].format(path=destination)).lower()
         if answer not in {"y", "yes"}:
-            print("  Dibatalkan.")
+            print(t["cancelled"])
             return
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(content, encoding="utf-8")
-    print(f"  [✓] Tersimpan di: {destination}")
+    print(t["saved"].format(path=destination))
 
 
 def main() -> None:
-    print_banner()
+    t = choose_language()
+    print_banner(t)
     md = MarkItDown()
 
-    while True:
-        print()
-        source = pick_source_file()
+    try:
+        while True:
+            print()
+            source = pick_source_file(t)
 
-        content = convert_file(source, md)
-        if content is None:
-            continue
+            content = convert_file(source, md, t)
+            if content is None:
+                continue
 
-        destination = choose_output_path(source)
-        save_file(destination, content)
+            destination = choose_output_path(source, t)
+            save_file(destination, content, t)
+    except KeyboardInterrupt:
+        print(t["interrupted"])
+        sys.exit(0)
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n  Dihentikan. Sampai jumpa!")
+        # Raised while choosing the language, before a string table exists.
+        print("\n\n  Dihentikan. Sampai jumpa! / Interrupted. Goodbye!")
         sys.exit(0)

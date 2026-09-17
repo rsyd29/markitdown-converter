@@ -11,6 +11,7 @@ formats into **Markdown**, powered by Microsoft's
 - Converts many formats: PDF, PPTX, DOCX, XLSX/XLS, CSV, HTML, XML, JSON, TXT,
   RTF, ODT, ODP, ODS, EPUB, Outlook (msg), images, audio, and more.
 - Interactive CLI UI — just enter the file path.
+- Choose the interface language (Indonesian or English) at startup.
 - Output Markdown can use a custom name, or automatically reuse the source
   file's name with the extension changed to `.md`.
 - Handles missing files, failed conversions, and overwrite confirmation when
@@ -90,15 +91,16 @@ Or run directly without activating the venv:
 
 Then follow the steps:
 
-1. Enter the path of the file to convert, for example:
+1. Choose the interface language: `1` for Bahasa Indonesia, `2` for English.
+2. Enter the path of the file to convert, for example:
    - `report.pdf`
    - `presentation.pptx`
    - `/Users/name/Documents/document.docx`
-2. The program converts the file and shows the resulting character count.
-3. Choose how to name the output file:
+3. The program converts the file and shows the resulting character count.
+4. Choose how to name the output file:
    - `1` → same name as the source (only the extension changes to `.md`)
    - `2` → custom name/path (if just a name, it is saved in the source folder)
-4. The Markdown file is saved. The program then asks for the next file.
+5. The Markdown file is saved. The program then asks for the next file.
 
 Type `q` at any time to exit.
 
@@ -107,6 +109,7 @@ Type `q` at any time to exit.
 ```
 markitdown-converter/
 ├── main.py           # Main program (CLI)
+├── i18n.py           # Translation strings (Indonesian/English)
 ├── requirements.txt  # Dependencies
 ├── README.md         # Documentation (English)
 ├── README.id.md      # Documentation (Indonesian)
