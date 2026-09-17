@@ -52,7 +52,11 @@ pip install -r requirements.txt
 > percobaan ulang otomatis. Jika layanan itu tidak terjangkau (mis. error
 > broken pipe), aplikasi otomatis beralih ke model
 > [Whisper](https://github.com/openai/whisper) lokal (`faster-whisper`) yang
-> berjalan sepenuhnya offline.
+> berjalan sepenuhnya offline. Audio tanpa ucapan (mis. musik atau hening)
+> dilaporkan sebagai "tidak ada ucapan", bukan menghasilkan teks tebakan.
+>
+> Saat mengonversi audio, kamu akan diminta memilih bahasa transkripsi
+> (Indonesia, Inggris, atau deteksi otomatis).
 >
 > Jika perlu fitur lain, kamu bisa menambahkan extras lain, contoh:
 > - `youtube-transcription` — transkripsi video YouTube

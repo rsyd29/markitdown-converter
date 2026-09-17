@@ -52,7 +52,11 @@ pip install -r requirements.txt
 > automatic retries. If that service is unreachable (e.g. a broken-pipe error),
 > the app automatically falls back to a local
 > [Whisper](https://github.com/openai/whisper) model (`faster-whisper`) that runs
-> fully offline.
+> fully offline. Audio without speech (e.g. music or silence) is reported as "no
+> speech" instead of producing guessed text.
+>
+> When converting audio, you'll be asked to choose the transcription language
+> (Indonesian, English, or auto-detect).
 >
 > If you need more features, you can add other extras, for example:
 > - `youtube-transcription` — YouTube video transcription

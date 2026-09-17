@@ -92,8 +92,13 @@ AUDIO_RETRIES = 3
 AUDIO_RETRY_DELAY_S = 1.5
 
 #: Local Whisper model used when Google's service is unreachable. Smaller
-#: models ("tiny", "base") run faster on CPU; larger ones are more accurate.
-WHISPER_MODEL = "base"
+#: models ("tiny", "base") run faster on CPU; larger ones ("medium", "large")
+#: are more accurate but slower. "small" is a good accuracy/speed balance.
+WHISPER_MODEL = "small"
+
+#: Segments with a higher "no speech" probability are treated as silence/music
+#: and skipped, which prevents Whisper from hallucinating text on non-speech.
+WHISPER_NO_SPEECH_THRESHOLD = 0.6
 
 
 def is_audio(path: Path) -> bool:
@@ -114,7 +119,30 @@ def whisper_available() -> bool:
     return importlib.util.find_spec("faster_whisper") is not None
 
 
-def recognize_chunk(recognizer: Any, data: Any) -> str | None:
+#: Maps the audio language menu choice to (Google tag, Whisper code). ``None``
+#: for either value means "auto-detect".
+AUDIO_LANGUAGE_CHOICES: dict[str, tuple[str | None, str | None]] = {
+    "1": ("id-ID", "id"),
+    "2": ("en-US", "en"),
+    "3": (None, None),
+}
+
+
+def choose_audio_language(t: dict[str, str]) -> tuple[str | None, str | None]:
+    """Prompt for the audio transcription language."""
+    print(t["audio_language_title"])
+    print(t["audio_language_id"])
+    print(t["audio_language_en"])
+    print(t["audio_language_auto"])
+
+    while True:
+        choice = clean_input(input(t["audio_language_prompt"]))
+        if choice in AUDIO_LANGUAGE_CHOICES:
+            return AUDIO_LANGUAGE_CHOICES[choice]
+        print(t["audio_language_invalid"])
+
+
+def recognize_chunk(recognizer: Any, data: Any, language: str | None) -> str | None:
     """Transcribe one chunk with Google, retrying transient connection errors.
 
     Returns the chunk text (possibly empty for silence), or ``None`` when the
@@ -124,6 +152,8 @@ def recognize_chunk(recognizer: Any, data: Any) -> str | None:
 
     for attempt in range(1, AUDIO_RETRIES + 1):
         try:
+            if language:
+                return recognizer.recognize_google(data, language=language)
             return recognizer.recognize_google(data)
         except sr.UnknownValueError:
             # Silence or unintelligible speech in this chunk is not fatal.
@@ -134,7 +164,7 @@ def recognize_chunk(recognizer: Any, data: Any) -> str | None:
     return None
 
 
-def transcribe_google(source: Path, t: dict[str, str]) -> str | None:
+def transcribe_google(source: Path, t: dict[str, str], language: str | None) -> str | None:
     """Transcribe an audio file with Google, chunk by chunk.
 
     Returns the transcript, or ``None`` if the service is unreachable.
@@ -159,7 +189,7 @@ def transcribe_google(source: Path, t: dict[str, str]) -> str | None:
         with sr.AudioFile(buffer) as audio_file:
             data = recognizer.record(audio_file)
 
-        text = recognize_chunk(recognizer, data)
+        text = recognize_chunk(recognizer, data, language)
         if text is None:
             return None
         if text:
@@ -168,35 +198,60 @@ def transcribe_google(source: Path, t: dict[str, str]) -> str | None:
     return " ".join(parts)
 
 
-def transcribe_whisper(source: Path) -> str:
+def transcribe_whisper(source: Path, language: str | None) -> str:
     """Transcribe an audio file locally with faster-whisper (works offline)."""
     from faster_whisper import WhisperModel
 
     model = WhisperModel(WHISPER_MODEL, device="auto", compute_type="int8")
-    segments, _info = model.transcribe(str(source))
-    return " ".join(segment.text.strip() for segment in segments if segment.text.strip())
+    segments, _info = model.transcribe(
+        str(source),
+        language=language,
+        vad_filter=True,
+        condition_on_previous_text=False,
+    )
+    return " ".join(
+        segment.text.strip()
+        for segment in segments
+        if segment.text.strip()
+        and segment.no_speech_prob < WHISPER_NO_SPEECH_THRESHOLD
+    )
 
 
-def transcribe_audio(source: Path, t: dict[str, str]) -> tuple[str, str | None]:
+def transcribe_audio(
+    source: Path,
+    t: dict[str, str],
+    google_language: str | None,
+    whisper_language: str | None,
+) -> tuple[str, str | None]:
     """Transcribe an audio file, preferring Google and falling back to Whisper.
 
     Returns ``(transcript, error)``. ``error`` is ``None`` on success, and
     ``"network"`` or ``"no_speech"`` otherwise.
     """
     google_text = (
-        transcribe_google(source, t) if audio_dependencies_installed() else None
+        transcribe_google(source, t, google_language)
+        if audio_dependencies_installed()
+        else None
     )
 
     # Fall back to local Whisper when Google failed to connect or found no
     # speech (Whisper is more robust at detecting speech).
+    whisper_ran = False
+    whisper_text = ""
     if (google_text is None or not google_text.strip()) and whisper_available():
-        with Progress(t["progress_whisper"]):
-            try:
-                whisper_text = transcribe_whisper(source)
-            except Exception:  # noqa: BLE001 — best-effort fallback, any failure means no text
-                whisper_text = ""
-        if whisper_text.strip():
-            return whisper_text.strip(), None
+        try:
+            with Progress(t["progress_whisper"]):
+                whisper_text = transcribe_whisper(source, whisper_language)
+            whisper_ran = True
+        except Exception:  # noqa: BLE001 — best-effort fallback, any failure means no text
+            whisper_text = ""
+
+    if whisper_text.strip():
+        return whisper_text.strip(), None
+
+    # Whisper ran successfully but found no speech (e.g. music or silence).
+    if whisper_ran:
+        return "", "no_speech"
 
     if google_text is None:
         return "", "network"
@@ -214,10 +269,14 @@ def convert_audio(source: Path, t: dict[str, str]) -> str | None:
         print(t["audio_missing_ffmpeg"])
         return None
 
+    google_language, whisper_language = choose_audio_language(t)
+
     print(t["converting"].format(name=source.name))
     started = time.monotonic()
     try:
-        transcript, error = transcribe_audio(source, t)
+        transcript, error = transcribe_audio(
+            source, t, google_language, whisper_language
+        )
     except Exception as exc:  # noqa: BLE001 — report decoding/other failures
         print(t["convert_failed"].format(error=exc))
         return None

@@ -63,6 +63,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "      Cek koneksi internet, VPN/proxy, atau firewall — atau pasang Whisper\n"
             "      lokal untuk transkripsi offline: pip install faster-whisper"
         ),
+        "audio_language_title": "\n  Pilih bahasa audio:",
+        "audio_language_id": "    1) Bahasa Indonesia",
+        "audio_language_en": "    2) English",
+        "audio_language_auto": "    3) Otomatis (deteksi)",
+        "audio_language_prompt": "  Pilihan (1-3): ",
+        "audio_language_invalid": "  [!] Pilihan tidak valid. Masukkan 1-3.",
         "convert_success": "  [✓] Konversi berhasil ({count} karakter, {seconds:.1f} detik).",
         "overwrite_prompt": "  File '{path}' sudah ada. Timpa? (y/n): ",
         "cancelled": "  Dibatalkan.",
@@ -107,6 +113,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "      Check your internet connection, VPN/proxy, or firewall — or install\n"
             "      local Whisper for offline transcription: pip install faster-whisper"
         ),
+        "audio_language_title": "\n  Choose the audio language:",
+        "audio_language_id": "    1) Indonesian",
+        "audio_language_en": "    2) English",
+        "audio_language_auto": "    3) Auto-detect",
+        "audio_language_prompt": "  Choice (1-3): ",
+        "audio_language_invalid": "  [!] Invalid choice. Enter 1-3.",
         "convert_success": "  [✓] Conversion succeeded ({count} characters, {seconds:.1f}s).",
         "overwrite_prompt": "  File '{path}' already exists. Overwrite? (y/n): ",
         "cancelled": "  Cancelled.",
